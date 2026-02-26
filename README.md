@@ -16,15 +16,22 @@ Patterns for deploying apps on Cloudflare Workers with tunnels, sub-path routing
 
 **Topics:** Worker setup & route-based deployment, tunnel creation & DNS routing, shared-server pitfalls (`config.yml` override trap), multi-account alignment, sub-path SPA deployment (Vite `base` + worker prefix stripping), credential security & rotation.
 
+### [colima-k8s](colima-k8s-skill/)
+
+Patterns for running local Kubernetes (K3s) and Docker on macOS via Colima.
+
+**Topics:** Apple Silicon + Rosetta 2 setup, VM types (vz vs qemu), resource sizing, K3s cluster management, kubectl, persistent volumes, Helm, troubleshooting common errors, networking, volume mounts, certificates.
+
 ## Quick Start
 
 ```bash
 git clone https://github.com/carlosnetto/claude-skills.git
 cd claude-skills
 
-# Install one or both
+# Install any or all
 bash solana-wallet-skill/install.sh
 bash cloudflare-deployment-skill/install.sh
+bash colima-k8s-skill/install.sh
 ```
 
 Skills install to `~/.claude/skills/` and are available in all Claude Code sessions. Non-invocable skills activate automatically when the topic is relevant.

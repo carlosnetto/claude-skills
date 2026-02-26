@@ -12,6 +12,7 @@ Each skill is a self-contained directory with a `SKILL.md` (frontmatter + operat
 |---|---|---|
 | `solana-wallet-dev` | `solana-wallet-skill/` | Solana wallet/payment apps in React/TypeScript with Vite — RPC selection, HD key derivation, SPL token operations, transaction lifecycle, error handling, bundler config |
 | `cloudflare-deployment-dev` | `cloudflare-deployment-skill/` | Cloudflare Workers deployment — routes, tunnels, shared servers, multi-account setups, sub-path SPA serving, credential security |
+| `colima-k8s` | `colima-k8s-skill/` | Local Kubernetes (K3s) and Docker on macOS via Colima — Apple Silicon + Rosetta 2, VM types, resource sizing, K3s, troubleshooting |
 
 ## Structure Convention
 
@@ -50,6 +51,7 @@ Each topic file covers one concern:
 # Install a single skill
 bash solana-wallet-skill/install.sh
 bash cloudflare-deployment-skill/install.sh
+bash colima-k8s-skill/install.sh
 
 # Verify installation
 ls ~/.claude/skills/
