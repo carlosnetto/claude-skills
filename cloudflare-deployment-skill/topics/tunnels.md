@@ -99,7 +99,7 @@ ingress:
   - service: http://localhost:PORT
 YAML
 
-cloudflared tunnel run --config "$TMPCONFIG" --token "$TOKEN"
+cloudflared tunnel --config "$TMPCONFIG" run --token "$TOKEN"
 ```
 
 The `trap` ensures the temp file is removed even if cloudflared is killed with Ctrl+C or SIGTERM.
