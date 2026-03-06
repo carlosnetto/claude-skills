@@ -55,6 +55,8 @@ User → domain.com/subpath/* (Worker route, matched by specificity)
 - **Always use `-f` flag when routing DNS** — prevents routing to the wrong tunnel when names collide across accounts.
 - **Never commit tunnel credentials** — `<UUID>.json` files are secrets. Use pack/unpack scripts for transfer.
 - **Always set `"binding": "ASSETS"` in wrangler config** — without it, `env.ASSETS` is undefined and the worker crashes (error 1101).
+- **Put production origins in the base config, not profile files** — Spring `application-local.yml` only loads with explicit profile activation. A CORS allowed-origin defaulting to `localhost` silently blocks all production traffic with `403 Invalid CORS request`.
+- **Test CORS preflight with curl before debugging in the browser** — `curl -X OPTIONS ... -H "Origin: ..." -H "Access-Control-Request-Method: POST"` pinpoints the problem faster than browser DevTools.
 
 ## Topic Files
 

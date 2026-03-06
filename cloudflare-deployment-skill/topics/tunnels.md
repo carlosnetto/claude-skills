@@ -80,6 +80,35 @@ cloudflared tunnel --config "$CONFIG_FILE" run
 
 **Pitfall**: If `~/.cloudflared/config.yml` exists, its ingress rules override `--url` even when `--url` is specified on the command line. The `--config` flag is the only way to fully bypass the default config.
 
+## `--token` + `--url`: Simplest Production Setup
+
+When running a named tunnel with `--token` (dashboard-managed), you can skip the dashboard ingress configuration entirely by passing `--url` on the command line:
+
+```bash
+cloudflared tunnel run --token "$TOKEN" --url http://localhost:8081
+```
+
+This routes all traffic for the tunnel's hostname to `localhost:8081` without touching the Cloudflare dashboard's "Hostname routes" or creating any config file. Far simpler than configuring ingress rules through the UI.
+
+Store the token in a gitignored file and wrap it in a script:
+
+```bash
+#!/usr/bin/env bash
+# .tunnel-token is gitignored
+TOKEN=$(cat "$(dirname "$0")/.tunnel-token")
+cloudflared tunnel run --token "$TOKEN" --url http://localhost:PORT
+```
+
+## Quick Tunnel Pitfalls (`--url` / `trycloudflare.com`)
+
+`cloudflared tunnel --url http://localhost:PORT` creates a temporary tunnel with a random `https://xxxx.trycloudflare.com` URL. Useful for one-off testing but has critical limitations for app deployments:
+
+- **URL rotates on every restart** — any Wrangler secret (`API_ORIGIN`) or env var storing the URL goes stale. Requires re-running `wrangler secret put` and redeploying the worker after each restart.
+- **`~/.cloudflared/config.yml` overrides `--url`** — if a default config exists, its ingress rules silently take over regardless of the `--url` flag.
+- **No stable DNS entry** — can't be used as a permanent `API_ORIGIN` for production.
+
+**Recommendation**: Use quick tunnels only for initial smoke-testing. Switch to a named tunnel with a stable subdomain (`digitaltwinapp-api.materalabs.us`) for any persistent deployment.
+
 ## DNS Routing Pitfalls
 
 ### Route by UUID, not by name

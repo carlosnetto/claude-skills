@@ -96,6 +96,51 @@ export default {
 };
 ```
 
+## API Proxy: Never Copy the Entire Request Object
+
+When proxying API calls from the Worker to a backend tunnel, **do not** use `fetch(new Request(apiUrl, request))`. This copies `credentials: 'include'` from the browser request into the Worker's outbound fetch, which is invalid in the Worker runtime and causes a `TypeError`.
+
+```typescript
+// BAD — copies credentials: 'include' from browser request, throws TypeError
+return fetch(new Request(apiUrl, request));
+
+// GOOD — construct the outbound request explicitly
+return fetch(apiUrl, {
+  method: request.method,
+  headers: request.headers,
+  body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
+  redirect: 'follow',
+});
+```
+
+Also note: never pass a `body` for `GET`/`HEAD` requests — some runtimes throw on this.
+
+## Sub-Path API Routing: Scope APIs Under the App Prefix
+
+When multiple apps share a domain (e.g. `materalabs.us/app-a`, `materalabs.us/app-b`), global API paths like `/api/...` create naming conflicts. Scope your API calls under the app's sub-path using `import.meta.env.BASE_URL` in the frontend:
+
+```typescript
+// BAD — /api/auth/google conflicts with other apps' /api routes
+fetch('/api/auth/google', ...)
+
+// GOOD — scoped under /digitaltwin-app/api/auth/google
+fetch(`${import.meta.env.BASE_URL}api/auth/google`, ...)
+```
+
+In `vite.config.ts`, proxy the scoped path and rewrite before forwarding to the backend:
+
+```typescript
+proxy: {
+  '/digitaltwin-app/api': {
+    target: 'http://localhost:8081',
+    changeOrigin: true,
+    rewrite: (path) => path.replace(/^\/digitaltwin-app/, ''),
+  },
+},
+```
+
+The worker strips the base path before proxying, so the backend always sees `/api/...` unchanged.
+
 ## ASSETS Binding Pitfall
 
 When using Workers Static Assets (`assets.directory` in wrangler config) with a custom worker (`main`), you **must** set `"binding": "ASSETS"` in the assets config. Without it:
@@ -103,6 +148,58 @@ When using Workers Static Assets (`assets.directory` in wrangler config) with a 
 - `env.ASSETS` is `undefined` at runtime
 - The worker crashes with Cloudflare error **1101** (worker threw an exception)
 - No build-time warning — the error only appears at runtime
+
+## Debug Pattern: Identifying 403 Source
+
+When a 403 appears and it's unclear whether it comes from Cloudflare WAF, the Worker itself, or the proxied backend, add a debug capture block to the Worker:
+
+```typescript
+if (!proxyResponse.ok) {
+  const body = await proxyResponse.text();
+  let parsed: any = {};
+  try { parsed = JSON.parse(body); } catch { parsed = { raw: body.slice(0, 300) }; }
+  return Response.json({ ...parsed, _status: proxyResponse.status }, { status: proxyResponse.status });
+}
+```
+
+Reading the result:
+- `raw` contains HTML → Cloudflare WAF blocked the request (never reached backend), or Spring Whitelabel page (backend reached but crashed)
+- `error` is a JSON string → backend returned a structured error (backend reached)
+- `"Invalid CORS request"` → Spring rejected the CORS preflight (origin not in allowed list)
+
+Test the CORS preflight directly from curl before spending time in the browser:
+
+```bash
+curl -X OPTIONS https://your-domain.com/your-app/api/endpoint \
+  -H "Origin: https://your-domain.com" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: content-type"
+# Expected: 200 with Access-Control-Allow-Origin header
+# Got 403: origin not in allowed list
+```
+
+## Spring CORS: Profile Files Don't Auto-Load
+
+When the backend is Spring Boot, `application-local.yml` (or any `application-{profile}.yml`) only loads when that profile is **explicitly activated** at startup. Without it, `@Value("${app.allowed-origins:...}")` falls back to its default — often just `http://localhost:3000` — silently blocking all production origins.
+
+**Fix**: Put non-secret production origins directly in `application.yml`. Reserve profile files for secrets (DB credentials) and environment-specific overrides.
+
+```yaml
+# application.yml — always loaded
+app:
+  allowed-origins: http://localhost:3000,https://your-domain.com
+
+# application-local.yml — only with --spring.profiles.active=local
+spring:
+  datasource:
+    username: admin
+    password: secret
+```
+
+Start with the profile explicitly:
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=local
+```
 
 ## Cache Invalidation
 
