@@ -84,25 +84,25 @@ cloudflared tunnel --config "$CONFIG_FILE" run
 
 When running a named tunnel with `--token` (dashboard-managed), do NOT rely on `--url` to define the ingress. If `~/.cloudflared/config.yml` exists on the machine (because another tunnel is running there), its `ingress:` block silently overrides `--url` — your requests hit the wrong backend and return 404 with no error message.
 
-**The safe pattern:** write a throwaway config file at runtime with only the ingress for this tunnel, then pass it via `--config`. This fully bypasses `~/.cloudflared/config.yml` regardless of what it contains. `--url` is redundant and should be omitted.
+**The safe pattern:** commit a `tunnel-config.yml` to the repo containing only the ingress rule (no secrets — those come from the token), and pass it via `--config`. This fully bypasses `~/.cloudflared/config.yml` regardless of what it contains. `--url` is redundant and should be omitted.
+
+```yaml
+# tunnel-config.yml — committed to git, no secrets
+# Tunnel identity and credentials come from .tunnel-token (gitignored).
+ingress:
+  - service: http://localhost:PORT
+```
 
 ```bash
 #!/usr/bin/env bash
-# .tunnel-token is gitignored
+# .tunnel-token is gitignored; tunnel-config.yml is committed to git
 TOKEN=$(cat "$(dirname "$0")/.tunnel-token")
+CONFIG_FILE="$(dirname "$0")/tunnel-config.yml"
 
-TMPCONFIG=$(mktemp /tmp/my-tunnel.XXXXXX.yml)
-trap 'rm -f "$TMPCONFIG"' EXIT
-
-cat > "$TMPCONFIG" <<'YAML'
-ingress:
-  - service: http://localhost:PORT
-YAML
-
-cloudflared tunnel --config "$TMPCONFIG" run --token "$TOKEN"
+cloudflared tunnel --config "$CONFIG_FILE" run --token "$TOKEN"
 ```
 
-The `trap` ensures the temp file is removed even if cloudflared is killed with Ctrl+C or SIGTERM.
+The config travels with the repo — `git pull` on a new machine is all that's needed. No temp file generation, no machine-specific setup.
 
 **If you choose to use `--url` instead** (simpler, single-line), add a guard that aborts when a default config exists — otherwise it will appear to work until the machine gets a second tunnel:
 
