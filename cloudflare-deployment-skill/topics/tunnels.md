@@ -80,24 +80,52 @@ cloudflared tunnel --config "$CONFIG_FILE" run
 
 **Pitfall**: If `~/.cloudflared/config.yml` exists, its ingress rules override `--url` even when `--url` is specified on the command line. The `--config` flag is the only way to fully bypass the default config.
 
-## `--token` + `--url`: Simplest Production Setup
+## `--token` + Temp Config: Safe Multi-Tunnel Pattern
 
-When running a named tunnel with `--token` (dashboard-managed), you can skip the dashboard ingress configuration entirely by passing `--url` on the command line:
+When running a named tunnel with `--token` (dashboard-managed), do NOT rely on `--url` to define the ingress. If `~/.cloudflared/config.yml` exists on the machine (because another tunnel is running there), its `ingress:` block silently overrides `--url` — your requests hit the wrong backend and return 404 with no error message.
 
-```bash
-cloudflared tunnel run --token "$TOKEN" --url http://localhost:8081
-```
-
-This routes all traffic for the tunnel's hostname to `localhost:8081` without touching the Cloudflare dashboard's "Hostname routes" or creating any config file. Far simpler than configuring ingress rules through the UI.
-
-Store the token in a gitignored file and wrap it in a script:
+**The safe pattern:** write a throwaway config file at runtime with only the ingress for this tunnel, then pass it via `--config`. This fully bypasses `~/.cloudflared/config.yml` regardless of what it contains. `--url` is redundant and should be omitted.
 
 ```bash
 #!/usr/bin/env bash
 # .tunnel-token is gitignored
 TOKEN=$(cat "$(dirname "$0")/.tunnel-token")
+
+TMPCONFIG=$(mktemp /tmp/my-tunnel.XXXXXX.yml)
+trap 'rm -f "$TMPCONFIG"' EXIT
+
+cat > "$TMPCONFIG" <<'YAML'
+ingress:
+  - service: http://localhost:PORT
+YAML
+
+cloudflared tunnel run --config "$TMPCONFIG" --token "$TOKEN"
+```
+
+The `trap` ensures the temp file is removed even if cloudflared is killed with Ctrl+C or SIGTERM.
+
+**If you choose to use `--url` instead** (simpler, single-line), add a guard that aborts when a default config exists — otherwise it will appear to work until the machine gets a second tunnel:
+
+```bash
+if [ -f "$HOME/.cloudflared/config.yml" ]; then
+  echo "ERROR: ~/.cloudflared/config.yml exists and will override --url."
+  echo "Use --config with a dedicated ingress file instead."
+  exit 1
+fi
 cloudflared tunnel run --token "$TOKEN" --url http://localhost:PORT
 ```
+
+### Why `--url` loses to `config.yml`
+
+cloudflared config resolution order (highest wins):
+
+| Source | Ingress authority |
+|---|---|
+| `--config FILE` with `ingress:` block | Wins — no other source consulted |
+| `~/.cloudflared/config.yml` with `ingress:` block | Wins over `--url` |
+| `--url http://...` flag | Only used when no config file defines ingress |
+
+`--token` controls **which tunnel** to connect to but has no effect on ingress routing.
 
 ## Quick Tunnel Pitfalls (`--url` / `trycloudflare.com`)
 
