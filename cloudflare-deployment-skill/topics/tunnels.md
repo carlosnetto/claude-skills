@@ -10,6 +10,57 @@ Browser → x9-api.materalabs.us (CNAME → tunnel)
            → localhost:5010 (your backend)
 ```
 
+## Two Auth Methods — Know Which One You're Using
+
+cloudflared has two ways to authenticate a tunnel. They look similar but behave differently and require different config files.
+
+### Method 1: credentials-file (legacy CLI flow)
+
+Created with `cloudflared tunnel create`. Generates a credentials JSON on disk. The config file must tell cloudflared where to find it:
+
+```yaml
+# ~/.cloudflared/my-tunnel.yml
+tunnel: 6eb8781a-...
+credentials-file: ~/.cloudflared/6eb8781a-....json  # on-disk secret
+
+ingress:
+  - service: http://localhost:5010
+```
+
+The credentials file is a **secret** — it must never be committed to git. The config file itself is not secret (tunnel UUID is not sensitive) but references the secret file, so it's typically also kept out of git.
+
+### Method 2: `--token` (preferred — dashboard-managed)
+
+Generated in the Cloudflare dashboard (Zero Trust → Networks → Tunnels → configure → copy token). The token is a base64 blob that encodes the tunnel UUID, account ID, and credentials all in one string. cloudflared decodes everything from `--token` at runtime.
+
+Because the token carries the credentials, the config file only needs the ingress rule — **nothing else**:
+
+```yaml
+# tunnel-config.yml — committed to git, no secrets
+ingress:
+  - service: http://localhost:8081
+```
+
+```bash
+cloudflared tunnel --config tunnel-config.yml run --token "$TOKEN"
+```
+
+The token is the only secret. Store it in a gitignored file (`.tunnel-token`). The config file is clean and travels with the repo.
+
+### Comparison
+
+| | credentials-file | `--token` (preferred) |
+|---|---|---|
+| Credentials location | `~/.cloudflared/<uuid>.json` on disk | Encoded in the token string |
+| Config file needs `tunnel:` + `credentials-file:` | Yes | No — just `ingress:` |
+| Config file safe to commit? | No (references on-disk secret) | **Yes** |
+| Machine setup on migration | Copy credentials JSON + config | `git pull` + store token |
+| Created via | `cloudflared tunnel create` (CLI) | Cloudflare dashboard |
+
+**Recommendation:** use `--token` for all new tunnels. The config file becomes a plain ingress declaration with no secrets, safe to commit alongside the app.
+
+---
+
 ## Creating a Tunnel
 
 ```bash
