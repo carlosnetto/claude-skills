@@ -56,6 +56,8 @@ You are an expert in banking domain terminology, aligned with BIAN (Banking Indu
 - **Never mix ledger and customer-facing terms** — `credit`/`debit` are internal; `deposit`/`withdrawal` are customer-facing.
 - **Always store currency alongside amount** — a bare number is meaningless without its currency.
 - **Always use ISO 4217 three-letter codes** — `USD` not `$`, `BRL` not `R$`, `EUR` not `€`.
+- **Always use RFC 9457 Problem Details for API errors** — `application/problem+json` with `type`, `title`, `status`, `detail`, `instance`. No custom error formats.
+- **Embed ISO codes in the Problem Details `type` URI** — `.../problems/iso20022/{code}` for payments, `.../problems/iso8583/{code}` for cards. Clients route on `type` string matching.
 
 ## Topic Files
 
@@ -66,11 +68,15 @@ Load these for detailed patterns:
 - `topics/parties.md` — Party as canonical entity (BIAN/FIBO), role separation, transaction and account roles
 - `topics/money-and-amounts.md` — Amount representation, currency, precision, rounding
 - `topics/ledger-and-entries.md` — Ledger structure, double-entry, journal entries, posting
+- `topics/error-codes-card.md` — ISO 8583 DE 39 response codes for card transactions (approve/decline/error)
+- `topics/error-codes-payment.md` — ISO 20022 External Code Sets for payment rejects and returns
+- `topics/problem-details.md` — RFC 9457/7807 Problem Details format for API error responses
 
 ## Reference Standards
 
 - **BIAN** — Banking Industry Architecture Network. Defines Service Domains, Business Object Model (BOM), and canonical Party entity. The **Party Reference Data Directory** is the authoritative service domain for party data. https://bian.org/
 - **FIBO** — Financial Industry Business Ontology. Defines the `AutonomousAgent` → `Party` → `Person` | `Organization` | `LegalEntity` hierarchy, with strict separation between entity identity and roles. https://spec.edmcouncil.org/fibo/
-- **ISO 20022** — Universal financial messaging standard (defines party, account, and transaction naming)
+- **RFC 9457** (obsoletes RFC 7807) — Problem Details for HTTP APIs. Standard JSON error envelope (`application/problem+json`). Required for all banking API error responses. https://datatracker.ietf.org/doc/html/rfc9457
+- **ISO 20022** — Universal financial messaging standard (defines party, account, and transaction naming). External Code Sets for payment reason codes. https://www.iso20022.org/
 - **ISO 4217** — Currency codes (`USD`, `BRL`, `EUR`)
-- **ISO 8583** — Card transaction message format (defines field names for card payments)
+- **ISO 8583** — Card transaction message format (defines DE 39 response codes for card payments)

@@ -14,6 +14,7 @@ Use specific subtypes instead of a generic `transaction` when possible:
 | Withdrawal | `withdrawal` | Money removed from an account |
 | Transfer | `transfer` | Money moved between accounts (internal or external) |
 | Payment | `payment` | Money sent to pay an obligation (bill, invoice) |
+| Invoice | `invoice` | A request for payment issued by an invoicer to an invoicee |
 | Fee | `fee` | Bank-charged amount (maintenance, overdraft, wire) |
 | Interest | `interestAccrual` | Interest earned or charged |
 | Reversal | `reversal` | Undo of a previous transaction |
@@ -27,6 +28,7 @@ type TransactionType =
   | 'withdrawal'
   | 'transfer'
   | 'payment'
+  | 'invoice'
   | 'fee'
   | 'interest_accrual'
   | 'reversal'
@@ -107,6 +109,55 @@ type EntryDirection = 'credit' | 'debit';
 
 Use `direction` or `entryType` as the field name — never `type` alone (too ambiguous).
 
+## Invoice Fields
+
+An invoice is a request for payment — it is not a payment itself. The invoice lifecycle is separate from the payment lifecycle. An invoice may result in zero, one, or many payments.
+
+```typescript
+interface Invoice {
+  invoiceId: string;
+  invoiceNumber: string;            // customer-facing reference
+  status: InvoiceStatus;
+
+  // Parties (see topics/parties.md for invoicer/invoicee)
+  invoicerId: string;               // FK to Party — who issued the invoice (seller)
+  invoiceeId: string;               // FK to Party — who received the invoice (buyer)
+
+  // Money
+  totalAmount: number;              // in minor units
+  paidAmount: number;               // sum of all payments applied
+  outstandingAmount: number;        // totalAmount - paidAmount
+  currency: string;                 // ISO 4217
+
+  // Timing
+  issuedAt: string;                 // when the invoice was created
+  dueAt: string;                    // payment deadline
+  paidAt?: string;                  // when fully settled
+
+  // Line items
+  lineItems: InvoiceLineItem[];
+}
+
+type InvoiceStatus =
+  | 'draft'
+  | 'issued'
+  | 'partially_paid'
+  | 'paid'
+  | 'overdue'
+  | 'cancelled'
+  | 'written_off';
+```
+
+When a payment settles an invoice, link them — don't merge them:
+
+```typescript
+interface PaymentInvoiceLink {
+  paymentId: string;                // FK to Transaction (payment)
+  invoiceId: string;                // FK to Invoice
+  appliedAmount: number;            // how much of this payment applies to this invoice
+}
+```
+
 ## Pitfalls
 
 - **Don't use `date` alone** — banking has multiple dates: `initiatedAt`, `processedAt`, `completedAt`, `valueDateAt`. Be explicit.
@@ -114,3 +165,5 @@ Use `direction` or `entryType` as the field name — never `type` alone (too amb
 - **Don't use `success`/`error` as statuses** — use the lifecycle terms: `completed`, `failed`.
 - **Don't mix `transaction` and `transfer`** — a `transfer` is a specific type of `transaction`.
 - **Don't use `txn`** — spell out `transaction`. Abbreviations cause confusion in larger codebases.
+- **Don't confuse `invoice` and `payment`** — an invoice is a request; a payment is a settlement. They have separate lifecycles and a many-to-many relationship.
+- **Don't use `bill` interchangeably with `invoice`** — `invoice` is the standard term; `bill` is informal and ambiguous (can also mean a banknote).

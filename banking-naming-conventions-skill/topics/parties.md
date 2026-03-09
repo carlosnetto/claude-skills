@@ -119,16 +119,46 @@ When a Party participates in a specific transaction, it takes on a transaction-s
 | Recipient | `recipient` | Customer-facing term for the receiver |
 | Debtor | `debtor` | ISO 20022 term for payer (formal messaging) |
 | Creditor | `creditor` | ISO 20022 term for payee (formal messaging) |
+| Ultimate Debtor | `ultimateDebtor` | ISO 20022: the original party on whose behalf the debtor initiates |
+| Ultimate Creditor | `ultimateCreditor` | ISO 20022: the final party for whom the creditor receives funds |
 | Remitter | `remitter` | The party ordering a remittance (international) |
 | Beneficiary | `beneficiary` | The party receiving a remittance (international) |
+| Invoicer | `invoicer` | The party that issued the invoice (seller/supplier) |
+| Invoicee | `invoicee` | The party that received the invoice (buyer/customer) |
+
+### The ISO 20022 Four-Party Chain
+
+ISO 20022 payment messages (pain.001, pacs.008) distinguish up to four parties in a single payment. This matters when an intermediary initiates a payment on behalf of someone else:
+
+```
+Ultimate Debtor → Debtor → Creditor → Ultimate Creditor
+(who owes)        (who sends)  (who receives)  (who is owed)
+```
+
+- **`debtor`** — the party whose account is debited (the sending bank's customer).
+- **`ultimateDebtor`** — the original party on whose behalf the debtor pays. Used when a parent company pays on behalf of a subsidiary, or a payroll processor pays on behalf of an employer.
+- **`creditor`** — the party whose account is credited (the receiving bank's customer).
+- **`ultimateCreditor`** — the final party for whom the funds are intended. Used when a collecting agent receives on behalf of a merchant, or a tax authority receives via an intermediary.
+
+When there is no intermediary, `ultimateDebtor` and `ultimateCreditor` are omitted — the chain collapses to `debtor` → `creditor`.
+
+```typescript
+interface PaymentParties {
+  debtorId: string;               // required — who sends
+  creditorId: string;             // required — who receives
+  ultimateDebtorId?: string;      // optional — on whose behalf the debtor pays
+  ultimateCreditorId?: string;    // optional — for whom the creditor receives
+}
+```
 
 ### Choosing the Right Term by Layer
 
 ```
 Customer-facing UI:       sender / recipient
 Internal transfer logic:  payer / payee
-ISO 20022 messages:       debtor / creditor
+ISO 20022 messages:       debtor / creditor (+ ultimate variants)
 International wires:      remitter / beneficiary
+Invoicing / billing:      invoicer / invoicee
 ```
 
 Pick one pair per layer and use it consistently throughout.
