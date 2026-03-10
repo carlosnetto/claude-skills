@@ -1,70 +1,63 @@
 ---
 name: cloudflare-deployment-dev
-description: Battle-tested patterns for deploying apps on Cloudflare Workers with tunnels, sub-path routing, and multi-account setups. Covers worker configuration, tunnel management, shared-server pitfalls, credential security, and sub-path SPA deployment. Learned from production incidents.
+description: Battle-tested patterns for deploying apps on Cloudflare Workers and Pages with API tokens, dotenv automation, tunnels, and multi-account setups. Covers zero-global-state deployments, credential security, and sub-path SPA serving.
 user-invocable: false
 ---
 
-# Cloudflare Workers & Tunnel Deployment
+# Cloudflare Workers & Pages Deployment
 
-You are an expert in deploying web applications on Cloudflare Workers with cloudflared tunnels. You follow battle-tested patterns for route-based deployment, sub-path serving, tunnel management, and multi-account setups.
+You are an expert in deploying web applications on Cloudflare Workers and Pages. You follow battle-tested patterns for zero-global-state deployments, route-based serving, tunnel management, and secure multi-account setups.
 
 ## Operating Procedure
 
-1. When the user asks about Cloudflare Workers deployment, tunnels, or related infrastructure, load the relevant topic file(s) from the `topics/` directory adjacent to this SKILL.md.
+1. When the user asks about Cloudflare deployment, loading the relevant topic file(s) from the `topics/` directory is mandatory.
 2. Apply the patterns and avoid the pitfalls described in the topic files.
-3. Always verify that DNS zone, Worker, and tunnel are on the same Cloudflare account before deploying.
-4. When setting up tunnels on shared servers, always use dedicated config files and run by UUID.
+3. **Prefer API Tokens over OAuth sessions** for deterministic, portable deployments.
+4. **Use dotenv-cli** to inject environment variables into deployment scripts.
 
 ## Quick Reference
 
 ### Key Commands
 | Task | Command |
 |---|---|
+| **Deploy (Portable)** | `npm run build && npm run deploy` (requires `dotenv -- npx wrangler ...`) |
 | Deploy worker | `npm run build && npx wrangler deploy` |
-| Check wrangler account | `npx wrangler whoami` |
-| Login wrangler | `npx wrangler login` |
-| Login cloudflared | `cloudflared tunnel login` |
-| Create tunnel | `cloudflared tunnel create <name>` |
-| Route DNS | `cloudflared tunnel -f route dns <UUID> <hostname>` |
-| Start tunnel | `cloudflared tunnel --config <file> run` |
-| Check tunnel connectors | `cloudflared tunnel info <name-or-UUID>` |
+| Check credentials | `npx dotenv -- npx wrangler whoami` |
+| Login wrangler | `npx wrangler login` (not recommended for portable projects) |
 | Purge cache | Cloudflare dashboard → Caching → Purge Everything |
 
 ### Key Files
 | File | Purpose |
 |---|---|
-| `wrangler.jsonc` | Worker name, account ID, routes, vars, assets binding |
-| `worker.ts` | Request handling: prefix stripping, API proxy, static assets, SPA fallback |
-| `.env.production` | Build-time vars (e.g., `VITE_QRAPPSERVER_URL`) |
-| `tunnel.sh` | Tunnel startup with dedicated config (auto-creates YAML) |
-| `~/.cloudflared/<UUID>.json` | Tunnel credentials (secret — never commit) |
-| `~/.cloudflared/cert.pem` | Cloudflared login certificate (tied to one zone) |
+| `.env` | Local secrets: `CLOUDFLARE_API_TOKEN`, `GEMINI_API_KEY`, etc. |
+| `package.json` | Deployment automation: `"deploy": "dotenv -- npx wrangler pages deploy ..."` |
+| `wrangler.jsonc` / `wrangler.toml` | Worker/Pages configuration, assets binding, env vars |
+| `vite.config.ts` | Configured for `target/` output and single-bundle JS/CSS |
+| `~/.cloudflared/cert.pem` | Legacy login certificate (avoid in favor of API Tokens) |
 
 ### Architecture Pattern
 ```
-User → domain.com/subpath/* (Worker route, matched by specificity)
-        ├─ /subpath/api-endpoints → strip prefix → proxy to tunnel
-        │     → api.domain.com → cloudflared → localhost:PORT → backend
-        └─ /subpath/* → strip prefix → static assets (dist/) + SPA fallback
+User → domain.com/* (Cloudflare Pages or Worker Route)
+        ├─ /assets/index.js → Direct static serving (target/ folder)
+        └─ /api/* → Strip prefix → Proxy to Workers or Backend
 ```
 
 ### Critical Rules
-- **Always keep DNS zone, Worker, and tunnel on the same Cloudflare account** — mismatches cause assets to 404 even when HTML loads.
-- **Never rely on default `~/.cloudflared/config.yml` on shared servers** — its ingress rules silently override CLI flags. Use `--config` with a dedicated file per tunnel.
-- **Always run tunnels by UUID, not by name** — name lookup requires `cert.pem` tied to the correct account. UUID + `--credentials-file` bypasses cert entirely.
-- **Always use `-f` flag when routing DNS** — prevents routing to the wrong tunnel when names collide across accounts.
-- **Never commit tunnel credentials** — `<UUID>.json` files are secrets. Use pack/unpack scripts for transfer.
-- **Always set `"binding": "ASSETS"` in wrangler config** — without it, `env.ASSETS` is undefined and the worker crashes (error 1101).
-- **Put production origins in the base config, not profile files** — Spring `application-local.yml` only loads with explicit profile activation. A CORS allowed-origin defaulting to `localhost` silently blocks all production traffic with `403 Invalid CORS request`.
-- **Test CORS preflight with curl before debugging in the browser** — `curl -X OPTIONS ... -H "Origin: ..." -H "Access-Control-Request-Method: POST"` pinpoints the problem faster than browser DevTools.
+- **Prefer `CLOUDFLARE_API_TOKEN` over OAuth.** Using API tokens in a `.env` file makes the project self-contained and avoids dependencies on `~/.wrangler` or `~/.cloudflared`.
+- **Automate dotenv injection.** Always use `dotenv --` in `package.json` scripts to ensure credentials are loaded without manual shell sourcing.
+- **Use `npx wrangler` in scripts.** This ensures the local version is used and avoids "command not found" errors when `wrangler` is not in the global PATH.
+- **Never commit `.env` files.** Always add `.env` to `.gitignore`.
+- **Always keep DNS zone, Worker/Pages, and tunnel on the same Cloudflare account.** Mismatches are the #1 cause of 404s and 522 errors.
+- **Always set `"binding": "ASSETS"` in wrangler config.** Without it, workers serving static files will crash (error 1101).
 
 ## Topic Files
 
 Load these for detailed patterns:
 
-- `topics/workers-and-routes.md` — Worker setup, route-based deployment, sub-path serving, SPA fallback, ASSETS binding
-- `topics/tunnels.md` — Tunnel creation, DNS routing, credentials, ingress config, `--url` vs config file
-- `topics/shared-servers.md` — Dedicated configs per tunnel, run by UUID, cert.pem conflicts, config.yml override
-- `topics/multi-account.md` — Account mismatch, wrangler login, cloudflared login, zone/worker/tunnel alignment
-- `topics/sub-path-deployment.md` — Vite `--base`, env files per mode, worker prefix stripping, asset path alignment
-- `topics/security.md` — Credential rotation, unauthorized connector detection, tunnel info inspection
+- `topics/self-contained-pages.md` — **[NEW]** Zero-global-state deployments using API Tokens, dotenv-cli, and "giant bundle" Vite builds.
+- `topics/workers-and-routes.md` — Worker setup, route-based deployment, sub-path serving, SPA fallback, ASSETS binding.
+- `topics/tunnels.md` — Tunnel creation, DNS routing, credentials, ingress config.
+- `topics/shared-servers.md` — Dedicated configs per tunnel, run by UUID, cert.pem conflicts.
+- `topics/multi-account.md` — Account mismatch, wrangler login, zone/worker/tunnel alignment.
+- `topics/sub-path-deployment.md` — Vite `--base`, worker prefix stripping, asset path alignment.
+- `topics/security.md` — API Token scoped permissions, credential rotation, unauthorized connector detection.
