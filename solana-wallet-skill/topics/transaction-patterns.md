@@ -103,3 +103,43 @@ try {
   throw new Error(error.message || "Transaction failed.");
 }
 ```
+
+## Separate Fee Payer (Sponsored Transactions)
+
+In scenarios like bulk sweeping of thousands of wallets, you can centralize gas (SOL) in a single "gas wallet" and have it pay the transaction fees for other wallets. This allows the wallets being swept to have **zero SOL balance**.
+
+### Key Rules
+1. **`feePayer` Property**: Explicitly set `transaction.feePayer = gasWallet.publicKey`.
+2. **Double Signing**: The transaction requires signatures from **both** the account owner (to authorize the move) and the fee payer (to authorize the gas payment).
+3. **Partial Signing**: Use `transaction.partialSign()` if signatures are collected at different times (e.g., source wallet signs on a client, gas wallet signs on a backend).
+
+### Example: Sweeping Tokens with Centralized Gas
+
+```typescript
+const sweepWithSponsoredFee = async (
+  connection: Connection,
+  instruction: TransactionInstruction,
+  sourceWallet: Keypair, // The wallet being swept (0 SOL ok)
+  gasWallet: Keypair    // Centralized wallet with SOL
+) => {
+  const transaction = new Transaction().add(instruction);
+  const { blockhash } = await connection.getLatestBlockhash('confirmed');
+  
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = gasWallet.publicKey;
+
+  // Both must sign. The order doesn't matter for .sign()
+  transaction.sign(sourceWallet, gasWallet);
+
+  return await connection.sendRawTransaction(transaction.serialize());
+};
+```
+
+### Advanced: Backend Gas Station
+If the `gasWallet` is on a server and the `sourceWallet` is a user's browser wallet:
+1. Browser creates transaction and sets `feePayer = gasWalletPublicKey`.
+2. Browser calls `wallet.signTransaction(transaction)`.
+3. Browser sends partially signed transaction to Backend.
+4. Backend calls `transaction.partialSign(gasWalletKeypair)`.
+5. Backend sends to RPC.
+
